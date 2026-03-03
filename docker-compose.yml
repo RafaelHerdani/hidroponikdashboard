@@ -1,0 +1,53 @@
+services:
+  # MQTT Broker
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: hidroponik-mqtt
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto/config:/mosquitto/config
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+    restart: unless-stopped
+
+  # PostgreSQL Database
+  db:
+    image: postgres:16-alpine
+    container_name: hidroponik-db
+    environment:
+      POSTGRES_DB: hidroponik
+      POSTGRES_USER: hidroponik
+      POSTGRES_PASSWORD: hidroponik123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U hidroponik" ]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  # FastAPI Backend
+  backend:
+    build: ./backend
+    container_name: hidroponik-backend
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://hidroponik:hidroponik123@db:5432/hidroponik
+      MQTT_BROKER: mosquitto
+      MQTT_PORT: 1883
+    depends_on:
+      db:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  mosquitto_data:
+  mosquitto_log:

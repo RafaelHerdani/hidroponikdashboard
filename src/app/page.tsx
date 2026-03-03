@@ -1,6 +1,6 @@
 "use client";
 
-import { useSimulation, useRoomSensor } from "@/lib/simulation";
+import { useSimulation, useRoomSensor, useRackSensor } from "@/lib/simulation";
 import { useNotifications } from "@/lib/notifications";
 import { Header } from "@/components/header";
 import { RoomMonitor } from "@/components/room-monitor";
@@ -10,11 +10,14 @@ import { SummaryPanel } from "@/components/summary-panel";
 export default function Dashboard() {
   const { data, simulationActive, toggleSimulation, simulationMode, setSimulationMode } = useSimulation();
   const { roomData, esp32Online } = useRoomSensor();
+  const { racks: apiRacks } = useRackSensor();
   const { notifications, unreadCount, markAllRead, clearAll } = useNotifications(data);
 
-  // Use real API data for room if available, otherwise fall back to simulation
+  // Sim ON → use simulated data (for testing with Stable/Up/Down modes)
+  // Sim OFF → use real API data (from MQTT → FastAPI → PostgreSQL)
   const roomTemperature = roomData?.temperature ?? data?.room.temperature;
   const roomHumidity = roomData?.humidity ?? data?.room.humidity;
+  const activeRacks = simulationActive ? (data?.racks ?? []) : (apiRacks ?? data?.racks ?? []);
 
   if (!data) {
     return (
@@ -29,13 +32,13 @@ export default function Dashboard() {
     );
   }
 
-  const warningCount = data.racks.filter(
+  const warningCount = activeRacks.filter(
     (r) =>
       r.overallStatus === "Warning" ||
       r.overallStatus === "Low" ||
       r.overallStatus === "High"
   ).length;
-  const criticalCount = data.racks.filter(
+  const criticalCount = activeRacks.filter(
     (r) => r.overallStatus === "Critical"
   ).length;
 
@@ -75,7 +78,7 @@ export default function Dashboard() {
           </div>
           <div className="flex-1 flex">
             <div className="w-full">
-              <SummaryPanel racks={data.racks} />
+              <SummaryPanel racks={activeRacks} />
             </div>
           </div>
         </div>
@@ -84,7 +87,7 @@ export default function Dashboard() {
         <div className="border-t-2 border-muted my-3" />
         {/* Row 2: 5 Rack Cards */}
         <div className="flex-1 grid grid-cols-5 gap-3 min-h-0">
-          {data.racks.map((rack) => (
+          {activeRacks.map((rack) => (
             <RackCard key={rack.id} rack={rack} />
           ))}
         </div>

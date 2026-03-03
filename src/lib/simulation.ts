@@ -220,10 +220,12 @@ export function useSimulation() {
 }
 
 /**
- * Hook to fetch real room sensor data from the API.
- * Polls GET /api/room every 3 seconds.
+ * Hook to fetch real room sensor data from the FastAPI backend.
+ * Polls GET http://localhost:8000/api/room every 3 seconds.
  * Returns null if no data from ESP32 yet.
  */
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
 export function useRoomSensor() {
     const [roomData, setRoomData] = useState<RoomData | null>(null);
     const [esp32Online, setEsp32Online] = useState(false);
@@ -233,7 +235,7 @@ export function useRoomSensor() {
 
         async function fetchRoom() {
             try {
-                const res = await fetch("/api/room");
+                const res = await fetch(`${API_BASE}/api/room`);
                 if (!res.ok) return;
                 const json = await res.json();
 
@@ -244,7 +246,7 @@ export function useRoomSensor() {
                         temperature: json.temperature,
                         humidity: json.humidity,
                     });
-                    setEsp32Online(json.esp32Online);
+                    setEsp32Online(json.esp32_online ?? false);
                 } else {
                     setEsp32Online(false);
                 }
@@ -264,4 +266,86 @@ export function useRoomSensor() {
     return { roomData, esp32Online };
 }
 
+/**
+ * Hook to fetch rack sensor data from the FastAPI backend.
+ * Polls GET http://localhost:8000/api/racks every 3 seconds.
+ * Maps snake_case API response → camelCase frontend RackData.
+ */
+export function useRackSensor() {
+    const [racks, setRacks] = useState<RackData[] | null>(null);
 
+    useEffect(() => {
+        let active = true;
+
+        async function fetchRacks() {
+            try {
+                const res = await fetch(`${API_BASE}/api/racks`);
+                if (!res.ok) return;
+                const json = await res.json();
+
+                if (!active) return;
+
+                // Map FastAPI snake_case → frontend camelCase
+                const mapped: RackData[] = json
+                    .map((rack: Record<string, unknown>) => {
+                        const sensors = rack.sensors as Record<string, unknown> | undefined;
+                        if (!sensors) return null;
+
+                        // Helper: convert API sensor or return fallback
+                        const mapSensor = (s: unknown): SensorData => {
+                            if (s && typeof s === "object" && "value" in (s as Record<string, unknown>)) {
+                                const sv = s as { value: number; history: number[]; status: string };
+                                return {
+                                    value: sv.value,
+                                    history: sv.history || [],
+                                    status: (sv.status as Status) || "Normal",
+                                };
+                            }
+                            return { value: 0, history: [], status: "Normal" };
+                        };
+
+                        const waterLevel = mapSensor(sensors.water_level);
+                        const ph = mapSensor(sensors.ph);
+                        const ec = mapSensor(sensors.ec);
+                        const waterTemp = mapSensor(sensors.water_temp);
+                        const waterFlow = mapSensor(sensors.water_flow);
+                        const lightIntensity = mapSensor(sensors.light_intensity);
+
+                        // Compute overall status
+                        const statuses = [waterLevel, ph, ec, waterTemp, waterFlow, lightIntensity].map(s => s.status);
+                        let overallStatus: Status = "Normal";
+                        if (statuses.includes("Critical")) overallStatus = "Critical";
+                        else if (statuses.some(s => s === "Low" || s === "High" || s === "Warning")) overallStatus = "Warning";
+
+                        return {
+                            id: rack.id as number,
+                            label: rack.label as string,
+                            waterLevel,
+                            ph,
+                            ec,
+                            waterTemp,
+                            waterFlow,
+                            lightIntensity,
+                            overallStatus,
+                        } as RackData;
+                    })
+                    .filter(Boolean) as RackData[];
+
+                if (mapped.length > 0) {
+                    setRacks(mapped);
+                }
+            } catch {
+                // Keep existing data on error
+            }
+        }
+
+        fetchRacks();
+        const interval = setInterval(fetchRacks, 3000);
+        return () => {
+            active = false;
+            clearInterval(interval);
+        };
+    }, []);
+
+    return { racks };
+}

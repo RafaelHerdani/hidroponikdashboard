@@ -1,95 +1,98 @@
-/**
- * ESP32 + DHT22 — Room Temperature & Humidity
- * 
- * Reference Arduino code for when the physical hardware is ready.
- * 
- * Wiring:
- *   DHT22 VCC  → ESP32 3.3V
- *   DHT22 GND  → ESP32 GND
- *   DHT22 DATA → ESP32 GPIO 4
- * 
- * Libraries needed (install via Arduino Library Manager):
- *   - DHT sensor library (by Adafruit)
- *   - ArduinoJson (by Benoit Blanchon)
- *   - Adafruit Unified Sensor
+/*
+ * ============================================================
+ *  ESP32 + DHT22 (MQTT Version) — Lab Smart Farming
+ * ============================================================
+ *
+ *  Versi sederhana: HANYA baca DHT22 dan publish ke MQTT.
+ *  Gunakan ini jika hanya ingin test room sensor tanpa Slave.
+ *
+ *  Untuk versi lengkap (Master + ESP-NOW receiver), lihat:
+ *    → esp32_master.ino
+ *
+ *  Library yang dibutuhkan:
+ *    - PubSubClient (by Nick O'Leary)
+ *    - DHT sensor library (by Adafruit)
+ *    - Adafruit Unified Sensor
+ *
+ *  Board: ESP32 Dev Module
+ * ============================================================
  */
 
-#include <WiFi.h>
-#include <HTTPClient.h>
 #include <DHT.h>
-#include <ArduinoJson.h>
+#include <PubSubClient.h>
+#include <WiFi.h>
+
 
 // ===== CONFIGURATION =====
-const char* WIFI_SSID     = "ACES";
-const char* WIFI_PASSWORD = "bukanuntukanakifdansi";
-const char* SERVER_URL    = "http://YOUR_SERVER_IP:3000/api/room";
+const char *WIFI_SSID = "ACES";
+const char *WIFI_PASSWORD = "bukanuntukifdansi";
+const char *MQTT_SERVER = "192.168.1.100"; // IP server/laptop Docker
+const int MQTT_PORT = 1883;
 
-#define DHT_PIN   4
-#define DHT_TYPE  DHT22
-#define SEND_INTERVAL_MS  5000
+#define DHT_PIN 4
+#define DHT_TYPE DHT22
 
 // ===== GLOBALS =====
+WiFiClient wifiClient;
+PubSubClient mqtt(wifiClient);
 DHT dht(DHT_PIN, DHT_TYPE);
+
 unsigned long lastSend = 0;
+const unsigned long INTERVAL = 5000;
+
+void setupWiFi() {
+  Serial.printf("Connecting to WiFi: %s", WIFI_SSID);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.printf("\n✅ Connected! IP: %s\n", WiFi.localIP().toString().c_str());
+}
+
+void reconnectMQTT() {
+  while (!mqtt.connected()) {
+    Serial.print("Connecting to MQTT...");
+    if (mqtt.connect("esp32-dht22")) {
+      Serial.println(" ✅ OK");
+    } else {
+      Serial.printf(" ❌ Failed (rc=%d). Retry...\n", mqtt.state());
+      delay(3000);
+    }
+  }
+}
 
 void setup() {
-    Serial.begin(115200);
-    Serial.println("\n🌱 ESP32 Room Sensor Starting...");
+  Serial.begin(115200);
+  Serial.println("\n🌱 ESP32 DHT22 — MQTT Room Sensor\n");
 
-    // Init DHT22
-    dht.begin();
-
-    // Connect to WiFi
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-    Serial.print("Connecting to WiFi");
-    while (WiFi.status() != WL_CONNECTED) {
-        delay(500);
-        Serial.print(".");
-    }
-    Serial.printf("\n✅ Connected! IP: %s\n", WiFi.localIP().toString().c_str());
+  dht.begin();
+  setupWiFi();
+  mqtt.setServer(MQTT_SERVER, MQTT_PORT);
 }
 
 void loop() {
-    if (millis() - lastSend < SEND_INTERVAL_MS) return;
+  if (WiFi.status() != WL_CONNECTED)
+    setupWiFi();
+  if (!mqtt.connected())
+    reconnectMQTT();
+  mqtt.loop();
+
+  if (millis() - lastSend >= INTERVAL) {
     lastSend = millis();
 
-    // Read sensor
-    float temperature = dht.readTemperature();
-    float humidity = dht.readHumidity();
+    float temp = dht.readTemperature();
+    float hum = dht.readHumidity();
 
-    // Validate reading
-    if (isnan(temperature) || isnan(humidity)) {
-        Serial.println("❌ Failed to read DHT22 sensor!");
-        return;
+    if (isnan(temp) || isnan(hum)) {
+      Serial.println("⚠️ DHT22 read failed!");
+      return;
     }
 
-    Serial.printf("📡 Temp: %.1f°C  Humidity: %.1f%%\n", temperature, humidity);
+    char payload[64];
+    sprintf(payload, "{\"temperature\":%.1f,\"humidity\":%.1f}", temp, hum);
 
-    // Send to server
-    if (WiFi.status() == WL_CONNECTED) {
-        HTTPClient http;
-        http.begin(SERVER_URL);
-        http.addHeader("Content-Type", "application/json");
-
-        // Build JSON payload
-        JsonDocument doc;
-        doc["temperature"] = round(temperature * 10.0) / 10.0;
-        doc["humidity"] = round(humidity * 10.0) / 10.0;
-
-        String payload;
-        serializeJson(doc, payload);
-
-        int httpCode = http.POST(payload);
-
-        if (httpCode == 200) {
-            Serial.println("✅ Data sent successfully");
-        } else {
-            Serial.printf("❌ Server error: %d\n", httpCode);
-        }
-
-        http.end();
-    } else {
-        Serial.println("❌ WiFi disconnected, reconnecting...");
-        WiFi.reconnect();
-    }
+    mqtt.publish("hidroponik/room", payload);
+    Serial.printf("✅ Published: Temp=%.1f°C  Humidity=%.1f%%\n", temp, hum);
+  }
 }
