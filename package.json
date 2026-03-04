@@ -1,0 +1,17 @@
+{
+    "name": "lab-smart-farming",
+    "version": "1.0.0",
+    "private": true,
+    "description": "Hydroponics monitoring system — Docker + FastAPI + Next.js",
+    "scripts": {
+        "dev": "cd frontend && npm run dev",
+        "build": "cd frontend && npm run build",
+        "simulate:mqtt": "cd frontend && node ../scripts/simulate-mqtt.mjs",
+        "docker:up": "docker compose up --build -d",
+        "docker:down": "docker compose down",
+        "docker:logs": "docker compose logs -f backend"
+    },
+    "dependencies": {
+        "mqtt": "^5.15.0"
+    }
+}
