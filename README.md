@@ -1,4 +1,4 @@
-# 🌱 Lab Smart Farming — Dashboard Monitoring Hidroponik
+# Branch Main Untuk Frontend Dashboard dan Simulasi Data
 
 Dashboard monitoring real-time untuk sistem hidroponik indoor di Lab C502. Menampilkan data sensor dari 5 rak hidroponik, suhu & kelembaban ruangan, serta notifikasi otomatis.
 
