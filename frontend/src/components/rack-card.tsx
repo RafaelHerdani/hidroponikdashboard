@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -157,11 +158,13 @@ export function RackCard({ rack }: RackCardProps) {
                 }`} />
 
             <CardContent className="relative p-4 space-y-4">
-                {/* Header */}
-                <div className="flex items-start justify-between p-3 mb-3 rounded-lg border-2 border-gray-700 dark:border-gray-700 bg-gray-900 dark:bg-gray-900/50">
+                {/* Header — clickable to view time series */}
+                <Link href={`/rack/${rack.id}`} className="block">
+                <div className="flex items-start justify-between p-3 mb-3 rounded-lg border-2 border-gray-700 dark:border-gray-700 bg-gray-900 dark:bg-gray-900/50 cursor-pointer hover:border-emerald-600/50 transition-colors">
                     <div className="flex items-center gap-3">
                         <div>
                             <h3 className="text-lg font-bold text-gray-100 dark:text-gray-100">{rack.label}</h3>
+                            <span className="text-[10px] text-emerald-500/70">View Charts →</span>
                         </div>
                     </div>
                     <Badge
@@ -171,6 +174,7 @@ export function RackCard({ rack }: RackCardProps) {
                         {rack.overallStatus}
                     </Badge>
                 </div>
+                </Link>
 
                 {/* Tank Section - Bento Grid */}
                 <div>

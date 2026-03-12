@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .database import engine, Base
 from .mqtt_client import mqtt_subscriber
-from .routes import room, rack
+from .routes import room, rack, history, readings, auth
 
 logging.basicConfig(
     level=logging.INFO,
@@ -63,6 +63,9 @@ app.add_middleware(
 # Include routers
 app.include_router(room.router)
 app.include_router(rack.router)
+app.include_router(history.router)
+app.include_router(readings.router)
+app.include_router(auth.router)
 
 
 @app.get("/")
